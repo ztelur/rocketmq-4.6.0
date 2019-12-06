@@ -445,7 +445,15 @@ public class MQClientAPIImpl {
         final SendMessageContext context,
         final DefaultMQProducerImpl producer
     ) throws RemotingException, MQBrokerException, InterruptedException {
+
+        /**
+         * 构建发送消息的
+         */
+
         long beginStartTime = System.currentTimeMillis();
+        /**
+         * 构建 RemotingCommand
+         */
         RemotingCommand request = null;
         String msgType = msg.getProperty(MessageConst.PROPERTY_MESSAGE_TYPE);
         boolean isReply = msgType != null && msgType.equals(MixAll.REPLY_MESSAGE_FLAG);

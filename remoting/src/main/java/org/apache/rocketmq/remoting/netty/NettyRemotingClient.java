@@ -358,19 +358,45 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * remoting client 来同步发送消息获取返回值
+     * @param addr
+     * @param request
+     * @param timeoutMillis
+     * @return
+     * @throws InterruptedException
+     * @throws RemotingConnectException
+     * @throws RemotingSendRequestException
+     * @throws RemotingTimeoutException
+     */
     @Override
     public RemotingCommand invokeSync(String addr, final RemotingCommand request, long timeoutMillis)
         throws InterruptedException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException {
+        /**
+         * 记录开始时间
+         */
         long beginStartTime = System.currentTimeMillis();
+        /**
+         * 获取channel
+         */
         final Channel channel = this.getAndCreateChannel(addr);
         if (channel != null && channel.isActive()) {
             try {
+                /**
+                 * 发消息前回调
+                 */
                 doBeforeRpcHooks(addr, request);
                 long costTime = System.currentTimeMillis() - beginStartTime;
                 if (timeoutMillis < costTime) {
                     throw new RemotingTimeoutException("invokeSync call timeout");
                 }
+                /**
+                 * 真正发送消息
+                 */
                 RemotingCommand response = this.invokeSyncImpl(channel, request, timeoutMillis - costTime);
+                /**
+                 * 回调之后的hooks
+                 */
                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(channel), request, response);
                 return response;
             } catch (RemotingSendRequestException e) {
@@ -395,12 +421,16 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         if (null == addr) {
             return getAndCreateNameserverChannel();
         }
-
+        /**
+         * 如果已经有了，则直接从表中存储
+         */
         ChannelWrapper cw = this.channelTables.get(addr);
         if (cw != null && cw.isOK()) {
             return cw.getChannel();
         }
-
+        /**
+         * 不然要建立channel
+         */
         return this.createChannel(addr);
     }
 
