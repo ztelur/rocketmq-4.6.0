@@ -541,6 +541,18 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     }
 
+    /**
+     * 发送消息
+     * @param msg 消息
+     * @param communicationMode 通信模式
+     * @param sendCallback 回调
+     * @param timeout 超时
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     private SendResult sendDefaultImpl(
         Message msg,
         final CommunicationMode communicationMode,
@@ -563,7 +575,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         long beginTimestampPrev = beginTimestampFirst;
         long endTimestamp = beginTimestampFirst;
         /**
-         * 获取 Topic路由信息
+         * 获取 Topic 路由信息
          */
         TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
         if (topicPublishInfo != null && topicPublishInfo.ok()) {
@@ -720,6 +732,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             null).setResponseCode(ClientErrorCode.NOT_FOUND_TOPIC_EXCEPTION);
     }
 
+    /**
+     * 获取 TopicPublishInfo
+     * @param topic
+     * @return
+     */
     private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
         /**
          * 缓存中获取 Topic发布信息
@@ -780,6 +797,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
 
         SendMessageContext context = null;
+        /**
+         * 获得到 broker 的地址
+         */
         if (brokerAddr != null) {
             /**
              * 是否使用broker vip通道。broker会开启两个端口对外服务。
@@ -1214,7 +1234,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 Message userMessage = MessageAccessor.cloneMessage(msg);
                 String userTopic = NamespaceUtil.withoutNamespace(userMessage.getTopic(), mQClientFactory.getClientConfig().getNamespace());
                 userMessage.setTopic(userTopic);
-
+                /**
+                 * 选择消息队列
+                 */
                 mq = mQClientFactory.getClientConfig().queueWithNamespace(selector.select(messageQueueList, userMessage, arg));
             } catch (Throwable e) {
                 throw new MQClientException("select message queue throwed exception.", e);
@@ -1225,6 +1247,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 throw new RemotingTooMuchRequestException("sendSelectImpl call timeout");
             }
             if (mq != null) {
+                /**
+                 * 发送消息
+                 */
                 return this.sendKernelImpl(msg, mq, communicationMode, sendCallback, null, timeout - costTime);
             } else {
                 throw new MQClientException("select message queue return null.", null);

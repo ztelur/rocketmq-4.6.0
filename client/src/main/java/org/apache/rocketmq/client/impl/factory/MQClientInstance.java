@@ -604,13 +604,27 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 更新 topic 的路由地址
+     * @param topic
+     * @param isDefault
+     * @param defaultMQProducer
+     * @return
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
         DefaultMQProducer defaultMQProducer) {
         try {
+            /**
+             * 先获得锁
+             */
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     TopicRouteData topicRouteData;
                     if (isDefault && defaultMQProducer != null) {
+                        /**
+                         * 默认的情况，并且 defaultMQProducer 不为空
+                         * 从 nameserver 获取默认的 topic 路由信息
+                         */
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                             1000 * 3);
                         if (topicRouteData != null) {
@@ -625,13 +639,19 @@ public class MQClientInstance {
                     }
                     if (topicRouteData != null) {
                         TopicRouteData old = this.topicRouteTable.get(topic);
+                        /**
+                         * 判断新旧的 topicRouteData 数据是否发生变化
+                         */
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
+
                         if (!changed) {
                             changed = this.isNeedUpdateTopicRouteInfo(topic);
                         } else {
                             log.info("the topic[{}] route info changed, old[{}] ,new[{}]", topic, old, topicRouteData);
                         }
-
+                        /**
+                         * 如果需要更新
+                         */
                         if (changed) {
                             TopicRouteData cloneTopicRouteData = topicRouteData.cloneTopicRouteData();
 

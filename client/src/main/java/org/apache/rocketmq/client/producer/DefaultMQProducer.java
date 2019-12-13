@@ -262,7 +262,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      *
      * <strong> Much internal initializing procedures are carried out to make this instance prepared, thus, it's a must
      * to invoke this method before sending or querying messages. </strong> </p>
-     *
+     * 启动该 producer 服务
      * @throws MQClientException if there is any unexpected error.
      */
     @Override
@@ -315,6 +315,16 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * @throws RemotingException if there is any network-tier error.
      * @throws MQBrokerException if there is any error with broker.
      * @throws InterruptedException if the sending thread is interrupted.
+     */
+    /**
+     * 以同步方式发送消息，只有等发送程序完全结束后才return
+     * 因为有重试机制，所以可能多次发送，需要应用开发者去处理幂等
+     * @param msg
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
      */
     @Override
     public SendResult send(

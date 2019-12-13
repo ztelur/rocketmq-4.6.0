@@ -72,11 +72,12 @@ public class MQFaultStrategy {
      * @return 消息队列
      */
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
+        /**
+         * 是否允许延迟fault
+         */
         if (this.sendLatencyFaultEnable) {
             try {
-                /**
-                 * 获取 brokerName=lastBrokerName && 可用的一个消息队列
-                 */
+
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
                     int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
@@ -84,6 +85,9 @@ public class MQFaultStrategy {
                         pos = 0;
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName())) {
+                        /**
+                         * 获取 brokerName= lastBrokerName && 可用的一个消息队列
+                         */
                         if (null == lastBrokerName || mq.getBrokerName().equals(lastBrokerName))
                             return mq;
                     }
