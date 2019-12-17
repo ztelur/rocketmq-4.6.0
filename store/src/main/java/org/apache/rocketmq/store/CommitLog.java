@@ -552,17 +552,24 @@ public class CommitLog {
         return beginTimeInLock;
     }
 
+    /**
+     * 存储层，commitLog
+     * @param msg
+     * @return
+     */
     public PutMessageResult putMessage(final MessageExtBrokerInner msg) {
         // 设置存储时间
         msg.setStoreTimestamp(System.currentTimeMillis());
-        // Set the message body BODY CRC (consider the most appropriate setting
-        // on the client)
+        // 设置了CRC循环冗余校验码
         msg.setBodyCRC(UtilAll.crc32(msg.getBody()));
         // Back to Results
         AppendMessageResult result = null;
 
         StoreStatsService storeStatsService = this.defaultMessageStore.getStoreStatsService();
 
+        /**
+         * 获取 topic 和队列id
+         */
         String topic = msg.getTopic();
         int queueId = msg.getQueueId();
         /**
@@ -589,12 +596,16 @@ public class CommitLog {
                 msg.setQueueId(queueId);
             }
         }
-
+        /**
+         * 设置发送消息的 IP 地址
+         */
         InetSocketAddress bornSocketAddress = (InetSocketAddress) msg.getBornHost();
         if (bornSocketAddress.getAddress() instanceof Inet6Address) {
             msg.setBornHostV6Flag();
         }
-
+        /**
+         * 获取存储的 IP 地址
+         */
         InetSocketAddress storeSocketAddress = (InetSocketAddress) msg.getStoreHost();
         if (storeSocketAddress.getAddress() instanceof Inet6Address) {
             msg.setStoreHostAddressV6Flag();
@@ -605,6 +616,9 @@ public class CommitLog {
          * 获取写入映射文件
          */
         MappedFile unlockMappedFile = null;
+        /**
+         * 在映射文件队列末尾，找到当前正在追加的文件
+         */
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
         /**
          * 获取写入锁
@@ -618,7 +632,7 @@ public class CommitLog {
             // global
             msg.setStoreTimestamp(beginLockTimestamp);
             /**
-             * 当不存在映射文件时，进行创建
+             * 当不存在映射文件时或者当前映射文件已经满了，进行创建
              */
             if (null == mappedFile || mappedFile.isFull()) {
                 mappedFile = this.mappedFileQueue.getLastMappedFile(0); // Mark: NewFile may be cause noise
@@ -1333,6 +1347,9 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 默认的添加消息回调
+     */
     class DefaultAppendMessageCallback implements AppendMessageCallback {
         // File at the end of the minimum fixed length empty
         private static final int END_FILE_MIN_BLANK_LENGTH = 4 + 4;
@@ -1385,9 +1402,12 @@ public class CommitLog {
             ByteBuffer bornHostHolder = ByteBuffer.allocate(bornHostLength);
             ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
             /**
-             * 计算commitLog里的msgId
+             * 计算commitLog里的 msgId
              */
             this.resetByteBuffer(storeHostHolder, storeHostLength);
+            /**
+             * 计算 msgId
+             */
             String msgId;
             if ((sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0) {
                 msgId = MessageDecoder.createMessageId(this.msgIdMemory, msgInner.getStoreHostBytes(storeHostHolder), wroteOffset);
@@ -1470,7 +1490,7 @@ public class CommitLog {
                     queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
             }
 
-            // Initialization of storage space
+            // Initialization of storage space.重制了storage space
             this.resetByteBuffer(msgStoreItemMemory, msgLen);
             // 1 TOTALSIZE
             this.msgStoreItemMemory.putInt(msgLen);
@@ -1516,6 +1536,9 @@ public class CommitLog {
 
             final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
             // Write messages to the queue buffer
+            /**
+             * 写入到buffer中
+             */
             byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen);
 
             AppendMessageResult result = new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgId,

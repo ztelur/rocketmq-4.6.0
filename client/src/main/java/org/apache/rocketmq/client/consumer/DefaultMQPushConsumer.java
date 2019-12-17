@@ -684,12 +684,16 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
 
     /**
      * This method gets internal infrastructure readily to serve. Instances must call this method after configuration.
-     *
+     * 配置完 consumer 之后就调用 start 接口
      * @throws MQClientException if there is any client error.
      */
     @Override
     public void start() throws MQClientException {
+        /**
+         * 重新设置消费组
+         */
         setConsumerGroup(NamespaceUtil.wrapNamespace(this.getNamespace(), this.consumerGroup));
+
         this.defaultMQPushConsumerImpl.start();
         if (null != traceDispatcher) {
             try {

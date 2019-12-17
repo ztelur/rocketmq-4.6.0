@@ -167,6 +167,9 @@ public class MappedFile extends ReferenceResource {
         ensureDirOK(this.file.getParent());
 
         try {
+            /**
+             * 内存映射文件
+             */
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
@@ -205,6 +208,12 @@ public class MappedFile extends ReferenceResource {
         return appendMessagesInner(messageExtBatch, cb);
     }
 
+    /**
+     * 封装的内存映射文件的添加消息接口
+     * @param messageExt
+     * @param cb
+     * @return
+     */
     public AppendMessageResult appendMessagesInner(final MessageExt messageExt, final AppendMessageCallback cb) {
         assert messageExt != null;
         assert cb != null;
@@ -212,6 +221,9 @@ public class MappedFile extends ReferenceResource {
         int currentPos = this.wrotePosition.get();
 
         if (currentPos < this.fileSize) {
+            /**
+             * 这个很关键。获取到要写入的byteBuffer。slice 对内存映射 buffer 进行分片
+             */
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             /**
              * 获取需要写入的字节缓冲区
@@ -221,7 +233,7 @@ public class MappedFile extends ReferenceResource {
             AppendMessageResult result;
             if (messageExt instanceof MessageExtBrokerInner) {
                 /**
-                 * 插入消息到 MappedFile，并返回插入结果
+                 * 插入消息到 MappedFile，并返回插入结果，但是只是获取了 byteBuffer 然后
                  */
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
             } else if (messageExt instanceof MessageExtBatch) {

@@ -27,6 +27,9 @@ import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.utils.ThreadUtils;
 
+/**
+ * 拉去消息的服务线程
+ */
 public class PullMessageService extends ServiceThread {
     private final InternalLogger log = ClientLogger.getLog();
     private final LinkedBlockingQueue<PullRequest> pullRequestQueue = new LinkedBlockingQueue<PullRequest>();
@@ -76,10 +79,21 @@ public class PullMessageService extends ServiceThread {
         return scheduledExecutorService;
     }
 
+    /**
+     * 从上文可以看到，一个进程内只存在一个MQClientInstance（自己设置InstanceName除外），从MQClientInstance的启动流程可以看出，MQClientInstance使用一个单独的线程PullMessageService
+     * 来负责消息的拉取。
+     * @param pullRequest
+     */
     private void pullMessage(final PullRequest pullRequest) {
+        /**
+         * 获取一个实例，然后调用 pullMessage 根据消费组名从 MQClientInstance 中获取对应的实现类
+         */
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         if (consumer != null) {
             DefaultMQPushConsumerImpl impl = (DefaultMQPushConsumerImpl) consumer;
+            /**
+             * 调用DefaultMQPushConsumerImpl的pullMessage
+             */
             impl.pullMessage(pullRequest);
         } else {
             log.warn("No matched consumer for the PullRequest {}, drop it", pullRequest);
@@ -92,6 +106,12 @@ public class PullMessageService extends ServiceThread {
 
         while (!this.isStopped()) {
             try {
+                /**
+                 * 从 request 列表中取出来，然后进行拉取
+                 */
+                /**
+                 * 循环不断阻塞的从pullRequestQueue中取出pullRequest。
+                 */
                 PullRequest pullRequest = this.pullRequestQueue.take();
                 this.pullMessage(pullRequest);
             } catch (InterruptedException ignored) {
@@ -99,7 +119,6 @@ public class PullMessageService extends ServiceThread {
                 log.error("Pull Message Service Run Method exception", e);
             }
         }
-
         log.info(this.getServiceName() + " service end");
     }
 

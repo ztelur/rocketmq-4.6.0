@@ -223,6 +223,10 @@ public class MQClientInstance {
         return mqList;
     }
 
+    /**
+     * 启动
+     * @throws MQClientException
+     */
     public void start() throws MQClientException {
 
         synchronized (this) {
@@ -230,12 +234,18 @@ public class MQClientInstance {
                 case CREATE_JUST:
                     this.serviceState = ServiceState.START_FAILED;
                     // If not specified,looking address from name server
+                    /**
+                     * 如果没有指定Namesrv，则可以自行去寻找
+                     */
                     if (null == this.clientConfig.getNamesrvAddr()) {
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
                     // Start request-response channel
+                    /**
+                     * 启动底层网络层的netty的channel
+                     */
                     this.mQClientAPIImpl.start();
-                    // Start various schedule tasks
+                    // Start various schedule tasks 其实就是定时去取 namesrv
                     this.startScheduledTask();
                     // Start pull service
                     this.pullMessageService.start();
@@ -255,6 +265,9 @@ public class MQClientInstance {
     }
 
     private void startScheduledTask() {
+        /**
+         * 每隔2分钟尝试获取一次 NameServer 地址
+         */
         if (null == this.clientConfig.getNamesrvAddr()) {
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
@@ -268,7 +281,9 @@ public class MQClientInstance {
                 }
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
-
+        /**
+         * 每隔30s尝试更新主题路由信息
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -280,7 +295,9 @@ public class MQClientInstance {
                 }
             }
         }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
-
+        /**
+         * 每隔30s进行Broker心跳检查
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -293,7 +310,9 @@ public class MQClientInstance {
                 }
             }
         }, 1000, this.clientConfig.getHeartbeatBrokerInterval(), TimeUnit.MILLISECONDS);
-
+        /**
+         * 默认每隔5s持久化ConsumerOffset
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -305,7 +324,9 @@ public class MQClientInstance {
                 }
             }
         }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
-
+        /**
+         * 默认每隔1s检查线程池适配
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -893,7 +914,9 @@ public class MQClientInstance {
         if (null == group || null == consumer) {
             return false;
         }
-
+        /**
+         * 只存在本地的consuemrTable中
+         */
         MQConsumerInner prev = this.consumerTable.putIfAbsent(group, consumer);
         if (prev != null) {
             log.warn("the consumer group[" + group + "] exist already.");

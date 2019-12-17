@@ -274,7 +274,13 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
 
     private void initMQClientFactory() throws MQClientException {
         this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultLitePullConsumer, this.rpcHook);
+        /**
+         * 向MQClientInstance注册defaultMQPushConsumerImpl，以消费组的为key，也就是说一个进程内只允许有一个同名的消费组实例
+         */
         boolean registerOK = mQClientFactory.registerConsumer(this.defaultLitePullConsumer.getConsumerGroup(), this);
+        /**
+         * 如果注册失败，则抛出异常
+         */
         if (!registerOK) {
             this.serviceState = ServiceState.CREATE_JUST;
 
