@@ -173,19 +173,30 @@ public class PullAPIWrapper {
         final CommunicationMode communicationMode,
         final PullCallback pullCallback
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
-
+        /**
+         * 根据 brokername 以及 brokerId 从内存中查询 broker 地址相关信息
+         */
         FindBrokerResult findBrokerResult =
             this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),
                 this.recalculatePullFromWhichNode(mq), false);
+        /**
+         * 如果内存为空，则先从 NamerServer 更新一下内存的 Broker 地址
+         */
         if (null == findBrokerResult) {
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());
             findBrokerResult =
                 this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),
                     this.recalculatePullFromWhichNode(mq), false);
         }
-
+        /**
+         * 拿到broker相关信息，经典的缓存策略。
+         */
         if (findBrokerResult != null) {
             {
+                /**
+                 * 如果过滤表达式不是TAG类型 && broker版本小于V4_1_0_SNAPSHOT
+                 * 也就是说V4_1_0版本之前是只支持tag类型的
+                 */
                 // check version
                 if (!ExpressionType.isTagType(expressionType)
                     && findBrokerResult.getBrokerVersion() < MQVersion.Version.V4_1_0_SNAPSHOT.ordinal()) {
@@ -194,11 +205,15 @@ public class PullAPIWrapper {
                 }
             }
             int sysFlagInner = sysFlag;
-
+            /**
+             * 如果是从节点 则清除 FLAG_COMMIT_OFFSET 标志位
+             */
             if (findBrokerResult.isSlave()) {
                 sysFlagInner = PullSysFlag.clearCommitOffsetFlag(sysFlagInner);
             }
-
+            /**
+             * 拼接请求
+             */
             PullMessageRequestHeader requestHeader = new PullMessageRequestHeader();
             requestHeader.setConsumerGroup(this.consumerGroup);
             requestHeader.setTopic(mq.getTopic());
@@ -216,7 +231,9 @@ public class PullAPIWrapper {
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
                 brokerAddr = computPullFromWhichFilterServer(mq.getTopic(), brokerAddr);
             }
-
+            /**
+             * 发送请求
+             */
             PullResult pullResult = this.mQClientFactory.getMQClientAPIImpl().pullMessage(
                 brokerAddr,
                 requestHeader,

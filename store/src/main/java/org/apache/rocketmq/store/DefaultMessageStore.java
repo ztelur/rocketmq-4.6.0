@@ -530,7 +530,9 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         long beginTime = this.getSystemClock().now();
-
+        /**
+         * 默认没有消息在队列
+         */
         GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
         long nextBeginOffset = offset;
         long minOffset = 0;
@@ -540,14 +542,14 @@ public class DefaultMessageStore implements MessageStore {
 
         final long maxOffsetPy = this.commitLog.getMaxOffset();
         /**
-         * 获取消费队列
+         * 找到对应的ConsumeQueue
          */
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
             minOffset = consumeQueue.getMinOffsetInQueue(); // 消费队列 最小队列编号
             maxOffset = consumeQueue.getMaxOffsetInQueue(); // 消费队列 最大队列编号
             /**
-             * 判断 队列位置(offset)
+             * 判断 队列位置(offset) 一些offset不合法的情况
              */
             if (maxOffset == 0) { // 消费队列无消息
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
@@ -567,7 +569,7 @@ public class DefaultMessageStore implements MessageStore {
                 }
             } else {
                 /**
-                 * 获得 映射Buffer结果(MappedFile)
+                 * 获得 映射Buffer结果(MappedFile) 根据 offset 找到对应的 ConsumeQueue 的 MappedFile（包含ByteBuf）
                  */
                 SelectMappedBufferResult bufferConsumeQueue = consumeQueue.getIndexBuffer(offset);
                 if (bufferConsumeQueue != null) {
@@ -583,13 +585,22 @@ public class DefaultMessageStore implements MessageStore {
                         long maxPhyOffsetPulling = 0;
 
                         int i = 0;
+                        /**
+                         * 能返回的最大信息大小，不能大于16M
+                         */
                         final int maxFilterMessageCount = Math.max(16000, maxMsgNums * ConsumeQueue.CQ_STORE_UNIT_SIZE);
                         final boolean diskFallRecorded = this.messageStoreConfig.isDiskFallRecorded();
+                        /**
+                         * 封装CqExtUnit
+                         */
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                         /**
                          * 循环获取 消息位置信息
                          */
                         for (; i < bufferConsumeQueue.getSize() && i < maxFilterMessageCount; i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
+                            /**
+                             * 对应了CQUnit的结构
+                             */
                             long offsetPy = bufferConsumeQueue.getByteBuffer().getLong(); // 消息物理位置offset
                             int sizePy = bufferConsumeQueue.getByteBuffer().getInt(); // 消息长度
                             long tagsCode = bufferConsumeQueue.getByteBuffer().getLong(); // 消息tagsCode
@@ -597,6 +608,7 @@ public class DefaultMessageStore implements MessageStore {
                             maxPhyOffsetPulling = offsetPy;
                             /**
                              * 当 offsetPy 小于 nextPhyFileStartOffset 时，意味着对应的 Message 已经移除，所以直接continue，直到可读取的Message。
+                             * 不是末尾的情况，offsetPy不正常则返回
                              */
                             if (nextPhyFileStartOffset != Long.MIN_VALUE) {
                                 if (offsetPy < nextPhyFileStartOffset)
@@ -626,7 +638,11 @@ public class DefaultMessageStore implements MessageStore {
                                     isTagsCodeLegal = false;
                                 }
                             }
-
+                            /**
+                             * 关于过滤，可以在参考出找到大佬的文章膜拜一下
+                             *
+                             * 是否有根据tagsCode匹配的消息
+                             */
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -637,6 +653,7 @@ public class DefaultMessageStore implements MessageStore {
                             }
                             /**
                              * 从commitLog获取对应消息ByteBuffer
+                             * 根据offset和size从CommitLog拿到具体的Message
                              */
                             SelectMappedBufferResult selectResult = this.commitLog.getMessage(offsetPy, sizePy);
                             if (null == selectResult) {
@@ -647,7 +664,9 @@ public class DefaultMessageStore implements MessageStore {
                                 nextPhyFileStartOffset = this.commitLog.rollNextFile(offsetPy);
                                 continue;
                             }
-
+                            /**
+                             * 是否有根据内容匹配的消息
+                             */
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 /**
@@ -660,8 +679,13 @@ public class DefaultMessageStore implements MessageStore {
                                 selectResult.release();
                                 continue;
                             }
-
+                            /**
+                             * 增加一些统计信息
+                             */
                             this.storeStatsService.getGetMessageTransferedMsgCount().incrementAndGet();
+                            /**
+                             * 将Message放入结果集
+                             */
                             getResult.addMessage(selectResult);
                             status = GetMessageStatus.FOUND;
                             nextPhyFileStartOffset = Long.MIN_VALUE;
@@ -674,7 +698,7 @@ public class DefaultMessageStore implements MessageStore {
                             brokerStatsManager.recordDiskFallBehindSize(group, topic, queueId, fallBehind);
                         }
                         /**
-                         * 计算下次拉取消息的消息队列编号
+                         * 计算下次拉取消息的消息队列编号  更新offset
                          */
                         nextBeginOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
                         /**

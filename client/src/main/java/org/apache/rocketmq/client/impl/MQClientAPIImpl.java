@@ -748,6 +748,18 @@ public class MQClientAPIImpl {
         throw new MQBrokerException(response.getCode(), response.getRemark());
     }
 
+    /**
+     * MQCLient的拉取消息接口
+     * @param addr
+     * @param requestHeader
+     * @param timeoutMillis
+     * @param communicationMode
+     * @param pullCallback
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public PullResult pullMessage(
         final String addr,
         final PullMessageRequestHeader requestHeader,
@@ -756,7 +768,9 @@ public class MQClientAPIImpl {
         final PullCallback pullCallback
     ) throws RemotingException, MQBrokerException, InterruptedException {
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.PULL_MESSAGE, requestHeader);
-
+        /**
+         * 根据不同的交互模式来调用不同的接口
+         */
         switch (communicationMode) {
             case ONEWAY:
                 assert false;
