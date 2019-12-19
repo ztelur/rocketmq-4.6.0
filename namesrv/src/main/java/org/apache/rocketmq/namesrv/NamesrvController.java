@@ -61,29 +61,58 @@ public class NamesrvController {
     private FileWatchService fileWatchService;
 
     public NamesrvController(NamesrvConfig namesrvConfig, NettyServerConfig nettyServerConfig) {
+        /**
+         * namesrv参数配置
+         */
         this.namesrvConfig = namesrvConfig;
+        /**
+         * netty的参数配置
+         */
         this.nettyServerConfig = nettyServerConfig;
+        /**
+         * KVConfigManager绑定NamesrvController
+         */
         this.kvConfigManager = new KVConfigManager(this);
+        /**
+         * 初始化RouteInfoManager，很重要
+         */
         this.routeInfoManager = new RouteInfoManager();
+        /**
+         * 监听客户端连接(Channel)的变化，通知RouteInfoManager检查broker是否有变化
+         */
         this.brokerHousekeepingService = new BrokerHousekeepingService(this);
         this.configuration = new Configuration(
             log,
             this.namesrvConfig, this.nettyServerConfig
         );
+        /**
+         * namesrv的配置参数会保存到磁盘文件中
+         */
         this.configuration.setStorePathFromConfig(this.namesrvConfig, "configStorePath");
     }
 
     public boolean initialize() {
-
+        /**
+         * 初始化KVConfigManager
+         */
         this.kvConfigManager.load();
-
+        /**
+         * 初始化netty server
+         */
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
-
+        /**
+         * 初始化客户端请求处理的线程池
+         */
         this.remotingExecutor =
             Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
-
+        /**
+         * 注册DefaultRequestProcessor，所有的客户端请求都会转给这个Processor来处理
+         * 它的逻辑到时候会出现在NettyServerHandler里
+         */
         this.registerProcessor();
-
+        /**
+         * 启动定时调度，每10秒钟扫描所有Broker，检查存活状态
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -92,6 +121,9 @@ public class NamesrvController {
             }
         }, 5, 10, TimeUnit.SECONDS);
 
+        /**
+         * 日志打印的调度器，定时打印kvConfigManager的内容
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -100,6 +132,9 @@ public class NamesrvController {
             }
         }, 1, 10, TimeUnit.MINUTES);
 
+        /**
+         * 监听ssl证书文件变化
+         */
         if (TlsSystemConfig.tlsMode != TlsMode.DISABLED) {
             // Register a listener to reload SslContext
             try {
@@ -153,8 +188,13 @@ public class NamesrvController {
     }
 
     public void start() throws Exception {
+        /**
+         * 开启Netty Server
+         */
         this.remotingServer.start();
-
+        /**
+         * 监听ssl文件变化，可以实时更新证书
+         */
         if (this.fileWatchService != null) {
             this.fileWatchService.start();
         }

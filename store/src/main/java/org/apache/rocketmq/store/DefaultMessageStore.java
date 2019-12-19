@@ -65,9 +65,30 @@ public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
     private final MessageStoreConfig messageStoreConfig;
-    // CommitLog
+    //
+    /**
+     *
+     */
     private final CommitLog commitLog;
-
+    /**
+     *
+     * CommitLog
+     * 存储消息的数据结构，类似一个消息数组，按照消息收到的顺序，所有消息都存储在一起。
+     *      * 每个消息存储后都会生成一个对应的offset，代表在commitLog中的字节偏移量。
+     *      * 注意：CommitLog并不是一个文件，而是一系列文件（上图中的MappedFile）。
+     *      * 每个MappedFile文件的大小都是固定的（默认1G），写满一个会生成一个新的文件，新文件的文件名就是它存储的第一条消息的offset。
+     *
+     *
+     * ConsumerQueue
+     * 之前说了所有消息都是存储在一个commitLog中的，但是consumer是按照topic+queue的维度来消费消息的，没有办法直接从commitLog中读取，
+     * 所以针对每个topic的每个queue都会生成consumeQueue，ConsumeQueue中存储的是消息在commitLog中的offset，可以理解成一个按topic+queue建的索引，
+     * 每条消息占用20字节（上图中的一个cq）。跟commitLog一样，每个Queue文件也是一系列连续的文件组成，每个文件默认放30w个offset索引。
+     *
+     *
+     * IndexFile
+     *
+     * CommitLog的另外一种形式的索引文件，只是索引的是messageKey，每个MsgKey经过hash后计算存储的slot，然后将offset存到IndexFile的相应slot上。根据msgKey来查询消息时，可以先到IndexFile（slot+index类似一个hashmap）中查询offset，然后根据offset去commitLog中查询对应的消息
+     */
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
 
     private final FlushConsumeQueueService flushConsumeQueueService;
@@ -216,7 +237,9 @@ public class DefaultMessageStore implements MessageStore {
      * @throws Exception
      */
     public void start() throws Exception {
-
+        /**
+         * 构造文件锁，保证磁盘上的文件只会被一个messageStore读写
+         */
         lock = lockFile.getChannel().tryLock(0, 1, false);
         if (lock == null || lock.isShared() || !lock.isValid()) {
             throw new RuntimeException("Lock failed,MQ already started");
@@ -256,6 +279,10 @@ public class DefaultMessageStore implements MessageStore {
             }
             log.info("[SetReputOffset] maxPhysicalPosInLogicQueue={} clMinOffset={} clMaxOffset={} clConfirmedOffset={}",
                 maxPhysicalPosInLogicQueue, this.commitLog.getMinOffset(), this.commitLog.getMaxOffset(), this.commitLog.getConfirmOffset());
+
+            /**
+             * 启动ReputMessageService，该服务负责将CommitLog中的消息offset记录到cosumeQueue文件中
+             */
             this.reputMessageService.setReputFromOffset(maxPhysicalPosInLogicQueue);
             this.reputMessageService.start();
 
@@ -275,14 +302,32 @@ public class DefaultMessageStore implements MessageStore {
 
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
             this.haService.start();
+            /**
+             * 针对master，启动延时消息调度服务，真的消费失败的情况
+             */
             this.handleScheduleMessageService(messageStoreConfig.getBrokerRole());
         }
-
+        /**
+         * 启动FlushConsumeQueueService(继承ServiceThread，是个单线程)
+         * 定时将consumeQueue文件的数据刷新到磁盘，周期由参数flushIntervalConsumeQueue设置，默认1秒
+         */
         this.flushConsumeQueueService.start();
+        /**
+         * 启动CommitLog，对应了flushCommitLogService服务
+         * flushCommitLogService服务负责将CommitLog的数据flush到磁盘，有同步刷盘和异步刷盘两种方式
+         */
         this.commitLog.start();
+        /**
+         * 消息存储指标统计服务，RT，TPS等指标，admin可以用
+         */
         this.storeStatsService.start();
-
+        /**
+         * 对于新的broker，初始化文件存储的目录
+         */
         this.createTempFile();
+        /**
+         * 启动定时任务
+         */
         this.addScheduleTask();
         this.shutdown = false;
     }
@@ -1349,21 +1394,28 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private void addScheduleTask() {
-
+        /**
+         * 定时清理过期的commitLog、cosumeQueue数据文件
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 DefaultMessageStore.this.cleanFilesPeriodically();
             }
         }, 1000 * 60, this.messageStoreConfig.getCleanResourceInterval(), TimeUnit.MILLISECONDS);
-
+        /**
+         * 定时自检commitLog和consumerQueue文件，校验文件是否完整。主要用于监控，不会做修复文件的动作
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 DefaultMessageStore.this.checkSelf();
             }
         }, 1, 10, TimeUnit.MINUTES);
-
+        /**
+         * 定时检查commitLog的Lock时长(因为在write或者flush时侯会lock)
+         * 如果lock的时间过长，则打印jvm堆栈，用于监控。
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -1582,7 +1634,6 @@ public class DefaultMessageStore implements MessageStore {
                 this.scheduleMessageService.start();
             }
         }
-
     }
 
     public int remainTransientStoreBufferNumbs() {
@@ -1984,12 +2035,18 @@ public class DefaultMessageStore implements MessageStore {
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
 
+        /**
+         * run 方法就是在 从上面可以看到主要在执行doReput方法
+         */
         private void doReput() {
             if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
                 log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
                     this.reputFromOffset, DefaultMessageStore.this.commitLog.getMinOffset());
                 this.reputFromOffset = DefaultMessageStore.this.commitLog.getMinOffset();
             }
+            /**
+             * 判断commitLog的maxOffset是否比上次读取的offset大，大就代表了有新的消息
+             */
             for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
 
                 if (DefaultMessageStore.this.getMessageStoreConfig().isDuplicationEnable()
@@ -2000,6 +2057,8 @@ public class DefaultMessageStore implements MessageStore {
                  * 获取从reputFromOffset开始的commitLog对应的MappeFile对应的MappedByteBuffer
                  *
                  * 获取 reputFromOffset 开始的 CommitLog 对应的 MappedFile 对应的 MappedByteBuffer
+                 *
+                 * 从上次的结束offset开始读取commitLog文件中的消息
                  */
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
                 if (result != null) {
@@ -2012,6 +2071,7 @@ public class DefaultMessageStore implements MessageStore {
                             /**
                              * 生成重放消息重放调度请求
                              * 生成重放消息重放调度请求 (DispatchRequest) 。请求里主要包含一条消息 (Message) 或者 文件尾 (BLANK) 的基本信息。
+                             * 检查message数据完整性并封装成DispatchRequest
                              */
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
