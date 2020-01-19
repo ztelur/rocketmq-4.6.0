@@ -298,6 +298,9 @@ public class MappedFile extends ReferenceResource {
      * flush最小页数
      */
     public int flush(final int flushLeastPages) {
+        /**
+         * 判断当前是否能刷盘
+         */
         if (this.isAbleToFlush(flushLeastPages)) {
             if (this.hold()) {
                 int value = getReadPosition();
@@ -393,13 +396,15 @@ public class MappedFile extends ReferenceResource {
      * @return
      */
     private boolean isAbleToFlush(final int flushLeastPages) {
+        // 已经刷到的位置
         int flush = this.flushedPosition.get();
+        // 写到内存的位置
         int write = getReadPosition();
 
         if (this.isFull()) {
             return true;
         }
-
+        // 满足写到内存的offset比已经刷盘的offset大4K*4(默认的最小刷盘页数，一页默认4k
         if (flushLeastPages > 0) {
             return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= flushLeastPages;
         }

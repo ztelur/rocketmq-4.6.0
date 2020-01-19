@@ -425,8 +425,16 @@ public class MappedFileQueue {
         return deleteCount;
     }
 
+    /**
+     * 刷新
+     * @param flushLeastPages
+     * @return
+     */
     public boolean flush(final int flushLeastPages) {
         boolean result = true;
+        /**
+         * 找到最后的 MappedFile
+         */
         MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, this.flushedWhere == 0);
         if (mappedFile != null) {
             long tmpTimeStamp = mappedFile.getStoreTimestamp();
